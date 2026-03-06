@@ -92,6 +92,7 @@ class AudioManager: ObservableObject {
     private var micFlashTimer: Timer?
     let priorityManager = PriorityManager()
     private var connectedDeviceUIDs: Set<String> = []
+    private var deviceChangeRetryTask: Task<Void, Never>?
 
     var menuBarIcon: String {
         currentMode.icon
@@ -423,15 +424,43 @@ class AudioManager: ObservableObject {
         refreshDevices()
         refreshMuteStatus()
         
-        // Detect newly connected devices
         let newlyConnectedUIDs = connectedDeviceUIDs.subtracting(oldConnectedUIDs)
         previousConnectedUIDs = connectedDeviceUIDs
         
         if !isCustomMode {
-            // Auto-switch mode only when a new headphone connects or all headphones disconnect
             autoSwitchModeIfNeeded(newlyConnectedUIDs: newlyConnectedUIDs)
             applyHighestPriorityInput()
             applyHighestPriorityOutput()
+        }
+
+        // Bluetooth devices (e.g. AirPods) may not have their audio streams
+        // ready when macOS first reports the device. Schedule retries to catch
+        // late-initializing streams.
+        scheduleDeviceChangeRetries()
+    }
+
+    private func scheduleDeviceChangeRetries() {
+        deviceChangeRetryTask?.cancel()
+        let snapshotUIDs = connectedDeviceUIDs
+        deviceChangeRetryTask = Task { [weak self] in
+            for delay in [0.5, 1.5, 3.0] {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+                let oldUIDs = self.connectedDeviceUIDs
+                self.refreshDevices()
+                let newUIDs = self.connectedDeviceUIDs
+                if newUIDs != oldUIDs {
+                    self.refreshMuteStatus()
+                    if !self.isCustomMode {
+                        let justConnected = newUIDs.subtracting(snapshotUIDs)
+                        self.autoSwitchModeIfNeeded(newlyConnectedUIDs: justConnected)
+                        self.applyHighestPriorityInput()
+                        self.applyHighestPriorityOutput()
+                    }
+                    self.previousConnectedUIDs = newUIDs
+                }
+            }
         }
     }
     

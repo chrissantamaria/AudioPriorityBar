@@ -96,7 +96,20 @@ struct MenuBarView: View {
                 }
 
                 Spacer()
-                
+
+                // Manual refresh
+                Button {
+                    audioManager.refreshDevices()
+                    audioManager.refreshMuteStatus()
+                    audioManager.refreshVolume()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Refresh devices")
+
                 // Launch at login toggle
                 LaunchAtLoginToggle()
 
