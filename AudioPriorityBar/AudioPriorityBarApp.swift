@@ -87,9 +87,12 @@ class AudioManager: ObservableObject {
     @Published var isActiveOutputMuted: Bool = false
     @Published var isActiveInputMuted: Bool = false
     @Published var micFlashState: Bool = false
+    @Published var batteryInfo: [String: AirPodsBatteryInfo] = [:]
 
     private let deviceService = AudioDeviceService()
+    private let batteryService = BluetoothBatteryService()
     private var micFlashTimer: Timer?
+    private var batteryRefreshTimer: Timer?
     let priorityManager = PriorityManager()
     private var connectedDeviceUIDs: Set<String> = []
     private var deviceChangeRetryTask: Task<Void, Never>?
@@ -143,6 +146,31 @@ class AudioManager: ObservableObject {
         }
     }
 
+    func refreshBatteryInfo() {
+        let deviceSnapshot = (headphoneDevices + speakerDevices + inputDevices)
+            .filter { $0.isConnected }
+        let service = batteryService
+
+        Task.detached {
+            let _ = service.refreshBatteryInfo()
+            var mapped: [String: AirPodsBatteryInfo] = [:]
+
+            for device in deviceSnapshot {
+                if let info = service.batteryInfo(forDeviceUID: device.uid) {
+                    mapped[device.uid] = info
+                }
+            }
+
+            await MainActor.run { [mapped] in
+                self.batteryInfo = mapped
+            }
+        }
+    }
+
+    func getBatteryInfo(for device: AudioDevice) -> AirPodsBatteryInfo? {
+        batteryInfo[device.uid]
+    }
+
     func isDeviceMuted(_ device: AudioDevice) -> Bool {
         mutedDeviceIds.contains(device.id)
     }
@@ -163,11 +191,13 @@ class AudioManager: ObservableObject {
         currentMode = priorityManager.currentMode
         isCustomMode = priorityManager.isCustomMode
         refreshDevices()
-        previousConnectedUIDs = connectedDeviceUIDs  // Initialize tracking
+        previousConnectedUIDs = connectedDeviceUIDs
         refreshVolume()
         refreshMuteStatus()
+        refreshBatteryInfo()
         setupDeviceChangeListener()
         setupMuteVolumeListener()
+        setupBatteryRefreshTimer()
         if !isCustomMode {
             applyHighestPriorityInput()
             applyHighestPriorityOutput()
@@ -178,6 +208,14 @@ class AudioManager: ObservableObject {
         deviceService.onMuteOrVolumeChanged = { [weak self] in
             Task { @MainActor in
                 self?.handleMuteOrVolumeChange()
+            }
+        }
+    }
+
+    private func setupBatteryRefreshTimer() {
+        batteryRefreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshBatteryInfo()
             }
         }
     }
@@ -423,6 +461,7 @@ class AudioManager: ObservableObject {
         let oldConnectedUIDs = previousConnectedUIDs
         refreshDevices()
         refreshMuteStatus()
+        refreshBatteryInfo()
         
         let newlyConnectedUIDs = connectedDeviceUIDs.subtracting(oldConnectedUIDs)
         previousConnectedUIDs = connectedDeviceUIDs

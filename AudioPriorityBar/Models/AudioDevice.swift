@@ -25,6 +25,12 @@ enum OutputCategory: String, Codable, CaseIterable {
     }
 }
 
+struct AirPodsBatteryInfo: Equatable {
+    var left: Int?
+    var right: Int?
+    var case_: Int?
+}
+
 struct AudioDevice: Identifiable, Equatable, Hashable {
     let id: AudioObjectID
     let uid: String

@@ -143,6 +143,11 @@ struct DraggableDeviceRow: View {
     var isMuted: Bool {
         device.isConnected && audioManager.isDeviceMuted(device)
     }
+
+    var deviceBattery: AirPodsBatteryInfo? {
+        guard device.isConnected else { return nil }
+        return audioManager.getBatteryInfo(for: device)
+    }
     
     private func calculateTarget(offset: CGFloat) -> Int? {
         let rowsOffset = Int(round(offset / rowHeight))
@@ -216,6 +221,10 @@ struct DraggableDeviceRow: View {
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(Color.red))
+                }
+
+                if let battery = deviceBattery {
+                    BatteryIndicatorView(battery: battery)
                 }
 
                 Spacer(minLength: 12)
@@ -385,6 +394,50 @@ struct DraggableDeviceRow: View {
                     onDragEnded()
                 }
         )
+    }
+}
+
+struct BatteryIndicatorView: View {
+    let battery: AirPodsBatteryInfo
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let left = battery.left {
+                BatteryLabel(level: left, side: .left)
+            }
+            if let right = battery.right {
+                BatteryLabel(level: right, side: .right)
+            }
+        }
+        .fixedSize()
+    }
+}
+
+struct BatteryLabel: View {
+    let level: Int
+    let side: Side
+
+    enum Side {
+        case left, right
+    }
+
+    private var levelColor: Color {
+        switch level {
+        case 0..<20: return .red
+        case 20..<35: return .orange
+        default: return .secondary
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+            Image(systemName: side == .left ? "airpodpro.left" : "airpodpro.right")
+                .font(.system(size: 9))
+                .offset(y: -1)
+            Text("\(level)%")
+                .font(.system(size: 10, weight: .regular))
+        }
+        .foregroundColor(levelColor)
     }
 }
 
