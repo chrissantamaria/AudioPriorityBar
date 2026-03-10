@@ -104,6 +104,55 @@ class AudioDeviceService {
             dataSize,
             &mutableDeviceId
         )
+
+        if type == .output {
+            syncSystemOutputDevice(to: deviceId)
+        }
+    }
+
+    private func syncSystemOutputDevice(to deviceId: AudioObjectID) {
+        let current = getCurrentSystemOutputDevice()
+        guard current != deviceId else { return }
+
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var mutableDeviceId = deviceId
+        let dataSize = UInt32(MemoryLayout<AudioObjectID>.size)
+
+        AudioObjectSetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            dataSize,
+            &mutableDeviceId
+        )
+    }
+
+    func getCurrentSystemOutputDevice() -> AudioObjectID? {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var deviceId: AudioObjectID = 0
+        var dataSize = UInt32(MemoryLayout<AudioObjectID>.size)
+
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceId
+        )
+
+        return status == noErr ? deviceId : nil
     }
 
     func getOutputVolume() -> Float {
@@ -273,6 +322,18 @@ class AudioDeviceService {
             listenerBlock!
         )
 
+        var systemOutputAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &systemOutputAddress,
+            DispatchQueue.main,
+            listenerBlock!
+        )
+
         // Initial setup of mute/volume listeners
         updateMuteVolumeListeners()
     }
@@ -425,6 +486,18 @@ class AudioDeviceService {
         AudioObjectRemovePropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
             &outputDefaultAddress,
+            DispatchQueue.main,
+            block
+        )
+
+        var systemOutputAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &systemOutputAddress,
             DispatchQueue.main,
             block
         )
