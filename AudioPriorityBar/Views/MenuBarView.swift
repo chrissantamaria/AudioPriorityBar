@@ -4,6 +4,74 @@ import AppKit
 
 struct MenuBarView: View {
     @EnvironmentObject var audioManager: AudioManager
+    @State private var deviceSectionsHeight: CGFloat = 420
+
+    private let maxScrollHeight: CGFloat = 840
+
+    private var deviceSectionsViewportHeight: CGFloat {
+        min(max(deviceSectionsHeight, 1), maxScrollHeight)
+    }
+
+    private var deviceSections: some View {
+        VStack(spacing: 20) {
+            if audioManager.currentMode == .speaker || audioManager.isCustomMode {
+                DeviceSectionView(
+                    title: "Speakers",
+                    icon: "speaker.wave.2.fill",
+                    devices: audioManager.speakerDevices,
+                    currentDeviceId: audioManager.currentOutputId,
+                    onMove: audioManager.moveSpeakerDevice,
+                    onSelect: { device in
+                        if !audioManager.isCustomMode {
+                            audioManager.setMode(.speaker)
+                        }
+                        audioManager.setOutputDevice(device)
+                    },
+                    onHide: { audioManager.hideDevice($0, category: .speaker) },
+                    onUnhide: { audioManager.unhideDevice($0, category: .speaker) },
+                    category: .speaker,
+                    showCategoryPicker: true,
+                    isActiveCategory: audioManager.currentMode == .speaker || audioManager.isCustomMode
+                )
+            }
+
+            if audioManager.currentMode == .headphone || audioManager.isCustomMode {
+                DeviceSectionView(
+                    title: "Headphones",
+                    icon: "headphones",
+                    devices: audioManager.headphoneDevices,
+                    currentDeviceId: audioManager.currentOutputId,
+                    onMove: audioManager.moveHeadphoneDevice,
+                    onSelect: { device in
+                        if !audioManager.isCustomMode {
+                            audioManager.setMode(.headphone)
+                        }
+                        audioManager.setOutputDevice(device)
+                    },
+                    onHide: { audioManager.hideDevice($0, category: .headphone) },
+                    onUnhide: { audioManager.unhideDevice($0, category: .headphone) },
+                    category: .headphone,
+                    showCategoryPicker: true,
+                    isActiveCategory: audioManager.currentMode == .headphone || audioManager.isCustomMode
+                )
+            }
+
+            DeviceSectionView(
+                title: "Microphones",
+                icon: "mic.fill",
+                devices: audioManager.inputDevices,
+                currentDeviceId: audioManager.currentInputId,
+                onMove: audioManager.moveInputDevice,
+                onSelect: audioManager.setInputDevice,
+                onHide: { audioManager.hideDevice($0, category: nil) },
+                onUnhide: { audioManager.unhideDevice($0, category: nil) },
+                category: nil,
+                showCategoryPicker: false
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,69 +88,20 @@ struct MenuBarView: View {
                 .padding(.horizontal, 12)
 
             ScrollView {
-                VStack(spacing: 20) {
-                    // Speakers (show in speaker mode or custom mode)
-                    if audioManager.currentMode == .speaker || audioManager.isCustomMode {
-                        DeviceSectionView(
-                            title: "Speakers",
-                            icon: "speaker.wave.2.fill",
-                            devices: audioManager.speakerDevices,
-                            currentDeviceId: audioManager.currentOutputId,
-                            onMove: audioManager.moveSpeakerDevice,
-                            onSelect: { device in
-                                if !audioManager.isCustomMode {
-                                    audioManager.setMode(.speaker)
-                                }
-                                audioManager.setOutputDevice(device)
-                            },
-                            onHide: { audioManager.hideDevice($0, category: .speaker) },
-                            onUnhide: { audioManager.unhideDevice($0, category: .speaker) },
-                            category: .speaker,
-                            showCategoryPicker: true,
-                            isActiveCategory: audioManager.currentMode == .speaker || audioManager.isCustomMode
-                        )
-                    }
-
-                    // Headphones (show in headphone mode or custom mode)
-                    if audioManager.currentMode == .headphone || audioManager.isCustomMode {
-                        DeviceSectionView(
-                            title: "Headphones",
-                            icon: "headphones",
-                            devices: audioManager.headphoneDevices,
-                            currentDeviceId: audioManager.currentOutputId,
-                            onMove: audioManager.moveHeadphoneDevice,
-                            onSelect: { device in
-                                if !audioManager.isCustomMode {
-                                    audioManager.setMode(.headphone)
-                                }
-                                audioManager.setOutputDevice(device)
-                            },
-                            onHide: { audioManager.hideDevice($0, category: .headphone) },
-                            onUnhide: { audioManager.unhideDevice($0, category: .headphone) },
-                            category: .headphone,
-                            showCategoryPicker: true,
-                            isActiveCategory: audioManager.currentMode == .headphone || audioManager.isCustomMode
-                        )
-                    }
-
-                    // Microphones (always shown, at the bottom)
-                    DeviceSectionView(
-                        title: "Microphones",
-                        icon: "mic.fill",
-                        devices: audioManager.inputDevices,
-                        currentDeviceId: audioManager.currentInputId,
-                        onMove: audioManager.moveInputDevice,
-                        onSelect: audioManager.setInputDevice,
-                        onHide: { audioManager.hideDevice($0, category: nil) },
-                        onUnhide: { audioManager.unhideDevice($0, category: nil) },
-                        category: nil,
-                        showCategoryPicker: false
+                deviceSections
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: DeviceSectionsHeightKey.self, value: proxy.size.height)
+                        }
                     )
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
             }
-            .frame(maxHeight: 420)
+            .frame(height: deviceSectionsViewportHeight)
+            .scrollDisabled(deviceSectionsHeight <= maxScrollHeight)
+            .onPreferenceChange(DeviceSectionsHeightKey.self) { height in
+                if height > 0 {
+                    deviceSectionsHeight = height
+                }
+            }
 
             Divider()
                 .padding(.horizontal, 12)
@@ -146,6 +165,14 @@ struct MenuBarView: View {
             .animation(.easeInOut(duration: 0.2), value: audioManager.isEditMode)
         }
         .frame(width: 340)
+    }
+}
+
+private struct DeviceSectionsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
